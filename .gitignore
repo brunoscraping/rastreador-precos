@@ -58,3 +58,7 @@ desktop.ini
 *.pem
 *.key
 credenciais.*
+
+# artefatos do agendador
+executar_verificacao.cmd
+

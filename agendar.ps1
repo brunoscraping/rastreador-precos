@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # ZYON - agendador do rastreador de precos
 # ============================================================
 # Objetivo: fazer o rastreador rodar sozinho em horarios fixos,
@@ -29,6 +29,35 @@ function Say  { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
 function Ok   { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
 function Warn { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
 function Fail { param([string]$m) Write-Host "[-] $m" -ForegroundColor Red }
+
+# ------------------------------------------------------------
+# Normalizacao dos horarios
+# ------------------------------------------------------------
+# Quando o script e chamado com `powershell -File`, o PowerShell NAO
+# converte "-Horarios 09:00,21:00" em array: chega uma string unica
+# "09:00,21:00", que o New-ScheduledTaskTrigger rejeita como DateTime.
+# Quebramos por virgula e ponto-e-virgula para aceitar as duas formas.
+$Horarios = $Horarios |
+    ForEach-Object { $_ -split '[,;]' } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ }
+
+if (-not $Horarios) { $Horarios = @('09:00', '21:00') }
+
+foreach ($h in $Horarios) {
+    if ($h -notmatch '^\d{1,2}:\d{2}$') {
+        Fail "horario invalido: '$h' - use o formato HH:MM (ex: 09:00)"
+        exit 1
+    }
+}
+
+# ------------------------------------------------------------
+# Credenciais: o padrao do parametro le a sessao atual, que pode
+# estar vazia. Se estiver, buscamos o que ja foi persistido no
+# ambiente do USUARIO - que e a fonte que a tarefa agendada le.
+# ------------------------------------------------------------
+if (-not $Token)  { $Token  = [Environment]::GetEnvironmentVariable('TELEGRAM_BOT_TOKEN', 'User') }
+if (-not $ChatId) { $ChatId = [Environment]::GetEnvironmentVariable('TELEGRAM_CHAT_ID', 'User') }
 
 # ------------------------------------------------------------
 # Remocao

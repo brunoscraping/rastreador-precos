@@ -22,6 +22,31 @@ from .extrator import Preco
 from .motor import Motor, banco_padrao
 from .notificador import NotificadorTelegram
 
+
+def _preparar_saida() -> None:
+    """
+    Garante que acentos e simbolos cheguem ao terminal.
+
+    No Windows, um processo sem console interativo (Agendador de Tarefas,
+    redirecionamento para arquivo) usa cp1252 por padrao. Nesse encoding
+    '✓', '£' e '—' nao existem, e o click.echo derruba o programa com
+    UnicodeEncodeError — o pior tipo de falha, porque so aparece quando
+    ninguem esta olhando.
+
+    A ordem importa: tenta UTF-8, e se o console nao aceitar, cai para
+    errors='replace' em vez de explodir. Perder um simbolo e aceitavel;
+    perder a coleta inteira nao e.
+    """
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # fluxo redirecionado ou ambiente sem suporte — segue como esta
+            pass
+
+
+_preparar_saida()
+
 # ---------------------------------------------------------------------------
 # Apresentação
 # ---------------------------------------------------------------------------
@@ -33,6 +58,37 @@ CIANO = "\033[96m"
 NEGRITO = "\033[1m"
 CINZA = "\033[90m"
 FIM = "\033[0m"
+
+
+def _simbolos_seguros(texto: str) -> str:
+    """
+    Substitui simbolos que o encoding de saida nao suporta.
+
+    Chamado apenas quando o terminal nao e UTF-8 — mantem a saida legivel
+    em vez de imprimir '?' ou quebrar.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        texto.encode(encoding)
+        return texto
+    except (UnicodeEncodeError, LookupError):
+        return (
+            texto.replace("✓", "OK")
+            .replace("✗", "X")
+            .replace("★", "*")
+            .replace("←", "<-")
+            .replace("→", "->")
+            .replace("⬇", "v")
+            .replace("⬆", "^")
+            .replace("—", "-")
+            .replace("£", "GBP")
+            .replace("€", "EUR")
+        )
+
+
+def _echo(texto: str = "") -> None:
+    """Saida segura: nunca derruba o processo por causa de um simbolo."""
+    click.echo(_simbolos_seguros(texto))
 
 
 def _cor(texto: str, cor: str) -> str:
@@ -81,13 +137,13 @@ def add(url: str, alvo: float | None, seletor: str | None, titulo: str | None) -
     produto_id, criado = banco.adicionar_produto(url, titulo, seletor, alvo)
 
     if criado:
-        click.echo(f"{_cor('✓', VERDE)} produto #{produto_id} adicionado")
+        click.echo(_simbolos_seguros(f"{_cor('✓', VERDE)} produto #{produto_id} adicionado"))
     else:
-        click.echo(f"{_cor('•', AMARELO)} produto #{produto_id} já existia — dados atualizados")
+        click.echo(_simbolos_seguros(f"{_cor('•', AMARELO)} produto #{produto_id} já existia — dados atualizados"))
 
     if alvo is not None:
-        click.echo(f"  alerta quando ficar abaixo de {_formata(Decimal(str(alvo)))}")
-    click.echo(f"  {_cor('rode:', CINZA)} rastreador check {produto_id}")
+        click.echo(_simbolos_seguros(f"  alerta quando ficar abaixo de {_formata(Decimal(str(alvo)))}"))
+    click.echo(_simbolos_seguros(f"  {_cor('rode:', CINZA)} rastreador check {produto_id}"))
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +158,12 @@ def listar() -> None:
     produtos = banco.listar_produtos()
 
     if not produtos:
-        click.echo("nenhum produto. use: rastreador add <url>")
+        click.echo(_simbolos_seguros("nenhum produto. use: rastreador add <url>"))
         return
 
     click.echo()
-    click.echo(f"{_cor('ID', NEGRITO)}  {_cor('PREÇO', NEGRITO):>14}  {_cor('ALVO', NEGRITO):>12}  PRODUTO")
-    click.echo(_cor("─" * 78, CINZA))
+    click.echo(_simbolos_seguros(f"{_cor('ID', NEGRITO)}  {_cor('PREÇO', NEGRITO):>14}  {_cor('ALVO', NEGRITO):>12}  PRODUTO"))
+    click.echo(_simbolos_seguros(_cor("─" * 78, CINZA)))
 
     for p in produtos:
         stats = banco.estatistica(p.id)
@@ -121,7 +177,7 @@ def listar() -> None:
         alvo_txt = _formata(Decimal(str(p.preco_alvo))) if p.preco_alvo else _cor("—", CINZA)
         nome = (p.titulo or p.url)[:38]
 
-        click.echo(f"{p.id:>3}  {preco_txt:>22}  {alvo_txt:>20}  {nome}")
+        click.echo(_simbolos_seguros(f"{p.id:>3}  {preco_txt:>22}  {alvo_txt:>20}  {nome}"))
 
     click.echo()
 
@@ -142,15 +198,15 @@ def check(ids: tuple[int, ...], sem_navegador: bool, pausa: float) -> None:
     if ids:
         produtos = [p for i in ids if (p := banco.obter_produto(i)) is not None]
         if not produtos:
-            click.echo("nenhum produto encontrado com esses IDs", err=True)
+            click.echo(_simbolos_seguros("nenhum produto encontrado com esses IDs"), err=True)
             raise SystemExit(1)
     else:
         produtos = banco.listar_produtos()
         if not produtos:
-            click.echo("nada para verificar. use: rastreador add <url>")
+            click.echo(_simbolos_seguros("nada para verificar. use: rastreador add <url>"))
             return
 
-    click.echo(f"verificando {len(produtos)} produto(s)...\n")
+    click.echo(_simbolos_seguros(f"verificando {len(produtos)} produto(s)...\n"))
 
     with Motor(banco, usar_navegador=not sem_navegador, pausa_entre=pausa) as motor:
         for produto in produtos:
@@ -166,13 +222,13 @@ def check(ids: tuple[int, ...], sem_navegador: bool, pausa: float) -> None:
                     if resultado.estatistica.esta_no_menor_preco:
                         linha += f"  {_cor('← menor preço já visto', VERDE)}"
 
-                click.echo(linha)
+                click.echo(_simbolos_seguros(linha))
 
                 if resultado.precisa_alerta:
-                    click.echo(f"      {_cor('★ ALVO ATINGIDO', AMARELO)}")
+                    click.echo(_simbolos_seguros(f"      {_cor('★ ALVO ATINGIDO', AMARELO)}"))
             else:
-                click.echo(f"  {_cor('✗', VERMELHO)} #{produto.id} {nome}")
-                click.echo(f"      {_cor(resultado.erro or 'falha desconhecida', CINZA)}")
+                click.echo(_simbolos_seguros(f"  {_cor('✗', VERMELHO)} #{produto.id} {nome}"))
+                click.echo(_simbolos_seguros(f"      {_cor(resultado.erro or 'falha desconhecida', CINZA)}"))
 
             click.echo()
 
@@ -191,22 +247,22 @@ def history(produto_id: int, limit: int) -> None:
     produto = banco.obter_produto(produto_id)
 
     if produto is None:
-        click.echo(f"produto #{produto_id} não existe", err=True)
+        click.echo(_simbolos_seguros(f"produto #{produto_id} não existe"), err=True)
         raise SystemExit(1)
 
     leituras = banco.historico(produto_id, limite=limit)
     if not leituras:
-        click.echo("sem leituras ainda. rode: rastreador check")
+        click.echo(_simbolos_seguros("sem leituras ainda. rode: rastreador check"))
         return
 
     click.echo()
-    click.echo(f"{_cor(produto.titulo or produto.url, NEGRITO)}")
-    click.echo(_cor("─" * 60, CINZA))
+    click.echo(_simbolos_seguros(f"{_cor(produto.titulo or produto.url, NEGRITO)}"))
+    click.echo(_simbolos_seguros(_cor("─" * 60, CINZA)))
 
     for linha in leituras:
         valor = Decimal(str(linha["valor"]))
         quando = str(linha["lido_em"]).replace("T", " ")[:19]
-        click.echo(f"  {quando}   {_formata(valor, linha['moeda'])}")
+        click.echo(_simbolos_seguros(f"  {quando}   {_formata(valor, linha['moeda'])}"))
 
     click.echo()
 
@@ -228,26 +284,26 @@ def stats(ids: tuple[int, ...]) -> None:
         produtos = banco.listar_produtos()
 
     if not produtos:
-        click.echo("nada para mostrar")
+        click.echo(_simbolos_seguros("nada para mostrar"))
         return
 
     for produto in produtos:
         s = banco.estatistica(produto.id)
         if s is None:
-            click.echo(f"#{produto.id} {produto.titulo or produto.url} — sem leituras")
+            click.echo(_simbolos_seguros(f"#{produto.id} {produto.titulo or produto.url} — sem leituras"))
             continue
 
         click.echo()
-        click.echo(f"{_cor(f'#{produto.id} ' + (s.titulo or produto.url), NEGRITO)}")
-        click.echo(_cor("─" * 60, CINZA))
-        click.echo(f"  atual      {_formata(s.atual, s.moeda):>16}   {_seta(s.variacao_pct)} desde o início")
-        click.echo(f"  mínimo     {_formata(s.minimo, s.moeda):>16}")
-        click.echo(f"  máximo     {_formata(s.maximo, s.moeda):>16}")
-        click.echo(f"  média      {_formata(s.media, s.moeda):>16}")
-        click.echo(f"  leituras   {s.leituras:>16}")
+        click.echo(_simbolos_seguros(f"{_cor(f'#{produto.id} ' + (s.titulo or produto.url), NEGRITO)}"))
+        click.echo(_simbolos_seguros(_cor("─" * 60, CINZA)))
+        click.echo(_simbolos_seguros(f"  atual      {_formata(s.atual, s.moeda):>16}   {_seta(s.variacao_pct)} desde o início"))
+        click.echo(_simbolos_seguros(f"  mínimo     {_formata(s.minimo, s.moeda):>16}"))
+        click.echo(_simbolos_seguros(f"  máximo     {_formata(s.maximo, s.moeda):>16}"))
+        click.echo(_simbolos_seguros(f"  média      {_formata(s.media, s.moeda):>16}"))
+        click.echo(_simbolos_seguros(f"  leituras   {s.leituras:>16}"))
 
         if s.esta_no_menor_preco and s.leituras > 1:
-            click.echo(f"  {_cor('→ está no menor preço já registrado', VERDE)}")
+            click.echo(_simbolos_seguros(f"  {_cor('→ está no menor preço já registrado', VERDE)}"))
 
     click.echo()
 
@@ -263,9 +319,9 @@ def rm(produto_id: int) -> None:
     """Para de monitorar um produto (o histórico é preservado)."""
     banco = banco_padrao()
     if banco.remover_produto(produto_id):
-        click.echo(f"{_cor('✓', VERDE)} produto #{produto_id} desativado")
+        click.echo(_simbolos_seguros(f"{_cor('✓', VERDE)} produto #{produto_id} desativado"))
     else:
-        click.echo(f"produto #{produto_id} não encontrado", err=True)
+        click.echo(_simbolos_seguros(f"produto #{produto_id} não encontrado"), err=True)
         raise SystemExit(1)
 
 
@@ -292,28 +348,28 @@ def telegram_id(token: str | None) -> None:
 
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
-        click.echo(_cor("token ausente.", VERMELHO))
-        click.echo("  defina TELEGRAM_BOT_TOKEN ou passe --token")
+        click.echo(_simbolos_seguros(_cor("token ausente.", VERMELHO)))
+        click.echo(_simbolos_seguros("  defina TELEGRAM_BOT_TOKEN ou passe --token"))
         raise SystemExit(1)
 
     chats = NotificadorTelegram.descobrir_chat_id(token)
 
     if not chats:
-        click.echo(_cor("nenhum chat encontrado.", AMARELO))
+        click.echo(_simbolos_seguros(_cor("nenhum chat encontrado.", AMARELO)))
         click.echo()
-        click.echo("  causas comuns:")
-        click.echo("    1. você ainda não mandou mensagem para o bot")
-        click.echo(f"       abra: https://t.me/SEU_BOT  e envie um oi")
-        click.echo("    2. o token está errado")
+        click.echo(_simbolos_seguros("  causas comuns:"))
+        click.echo(_simbolos_seguros("    1. você ainda não mandou mensagem para o bot"))
+        click.echo(_simbolos_seguros(f"       abra: https://t.me/SEU_BOT  e envie um oi"))
+        click.echo(_simbolos_seguros("    2. o token está errado"))
         raise SystemExit(1)
 
-    click.echo(f"\n{_cor('chats encontrados:', NEGRITO)}\n")
+    click.echo(_simbolos_seguros(f"\n{_cor('chats encontrados:', NEGRITO)}\n"))
     for c in chats:
-        click.echo(f"  {_cor(str(c['id']), CIANO):>18}   {c['tipo']:<10} {c['nome']}")
+        click.echo(_simbolos_seguros(f"  {_cor(str(c['id']), CIANO):>18}   {c['tipo']:<10} {c['nome']}"))
 
     click.echo()
-    click.echo(f"  {_cor('configure com:', CINZA)}")
-    click.echo(f'    $env:TELEGRAM_CHAT_ID = "{chats[0]["id"]}"')
+    click.echo(_simbolos_seguros(f"  {_cor('configure com:', CINZA)}"))
+    click.echo(_simbolos_seguros(f'    $env:TELEGRAM_CHAT_ID = "{chats[0]["id"]}"'))
     click.echo()
 
 
@@ -323,30 +379,30 @@ def telegram_test() -> None:
     notif = NotificadorTelegram()
 
     if not notif.configurado:
-        click.echo(_cor("Telegram não configurado.", VERMELHO))
+        click.echo(_simbolos_seguros(_cor("Telegram não configurado.", VERMELHO)))
         click.echo()
-        click.echo("  defina as duas variáveis:")
-        click.echo('    $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."')
-        click.echo('    $env:TELEGRAM_CHAT_ID   = "123456789"')
+        click.echo(_simbolos_seguros("  defina as duas variáveis:"))
+        click.echo(_simbolos_seguros('    $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."'))
+        click.echo(_simbolos_seguros('    $env:TELEGRAM_CHAT_ID   = "123456789"'))
         click.echo()
-        click.echo(f"  {_cor('não sabe o chat id?', CINZA)} rastreador telegram id")
+        click.echo(_simbolos_seguros(f"  {_cor('não sabe o chat id?', CINZA)} rastreador telegram id"))
         raise SystemExit(1)
 
-    click.echo("enviando mensagem de teste...")
+    click.echo(_simbolos_seguros("enviando mensagem de teste..."))
 
     if notif.enviar_texto(
         "✅ <b>Rastreador de preços</b>\n\n"
         "Alerta configurado e funcionando.\n"
         "Você vai receber uma mensagem aqui quando um preço cruzar o alvo."
     ):
-        click.echo(f"{_cor('✓', VERDE)} mensagem entregue — confira o Telegram")
+        click.echo(_simbolos_seguros(f"{_cor('✓', VERDE)} mensagem entregue — confira o Telegram"))
     else:
-        click.echo(f"{_cor('✗', VERMELHO)} falha no envio")
+        click.echo(_simbolos_seguros(f"{_cor('✗', VERMELHO)} falha no envio"))
         click.echo()
-        click.echo("  verifique:")
-        click.echo("    - o token está correto")
-        click.echo("    - o chat id é o seu (não de outro bot)")
-        click.echo("    - você já enviou /start para o bot")
+        click.echo(_simbolos_seguros("  verifique:"))
+        click.echo(_simbolos_seguros("    - o token está correto"))
+        click.echo(_simbolos_seguros("    - o chat id é o seu (não de outro bot)"))
+        click.echo(_simbolos_seguros("    - você já enviou /start para o bot"))
         raise SystemExit(1)
 
 
