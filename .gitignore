@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Banco de dados local
+*.db
+*.db-wal
+*.db-shm
+precos.db
+
+# Dados coletados
+*.csv
+*.json
+!package.json
+dados/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operacional
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Segredos — nunca versionar
+.env
+.env.local
+*.pem
+*.key
+credenciais.*
