@@ -20,6 +20,7 @@ import click
 from .banco import Banco
 from .extrator import Preco
 from .motor import Motor, banco_padrao
+from .notificador import NotificadorTelegram
 
 # ---------------------------------------------------------------------------
 # Apresentação
@@ -265,6 +266,87 @@ def rm(produto_id: int) -> None:
         click.echo(f"{_cor('✓', VERDE)} produto #{produto_id} desativado")
     else:
         click.echo(f"produto #{produto_id} não encontrado", err=True)
+        raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# telegram — configuração e teste do canal de alerta
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def telegram() -> None:
+    """Configura o alerta no Telegram."""
+
+
+@telegram.command(name="id")
+@click.option("--token", default=None, help="Token do bot (senão lê TELEGRAM_BOT_TOKEN).")
+def telegram_id(token: str | None) -> None:
+    """
+    Descobre o seu chat ID.
+
+    Envie qualquer mensagem para o seu bot no Telegram ANTES de rodar isto —
+    o Telegram só revela chats que já interagiram com o bot.
+    """
+    import os
+
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        click.echo(_cor("token ausente.", VERMELHO))
+        click.echo("  defina TELEGRAM_BOT_TOKEN ou passe --token")
+        raise SystemExit(1)
+
+    chats = NotificadorTelegram.descobrir_chat_id(token)
+
+    if not chats:
+        click.echo(_cor("nenhum chat encontrado.", AMARELO))
+        click.echo()
+        click.echo("  causas comuns:")
+        click.echo("    1. você ainda não mandou mensagem para o bot")
+        click.echo(f"       abra: https://t.me/SEU_BOT  e envie um oi")
+        click.echo("    2. o token está errado")
+        raise SystemExit(1)
+
+    click.echo(f"\n{_cor('chats encontrados:', NEGRITO)}\n")
+    for c in chats:
+        click.echo(f"  {_cor(str(c['id']), CIANO):>18}   {c['tipo']:<10} {c['nome']}")
+
+    click.echo()
+    click.echo(f"  {_cor('configure com:', CINZA)}")
+    click.echo(f'    $env:TELEGRAM_CHAT_ID = "{chats[0]["id"]}"')
+    click.echo()
+
+
+@telegram.command(name="test")
+def telegram_test() -> None:
+    """Envia uma mensagem de teste para confirmar que está funcionando."""
+    notif = NotificadorTelegram()
+
+    if not notif.configurado:
+        click.echo(_cor("Telegram não configurado.", VERMELHO))
+        click.echo()
+        click.echo("  defina as duas variáveis:")
+        click.echo('    $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."')
+        click.echo('    $env:TELEGRAM_CHAT_ID   = "123456789"')
+        click.echo()
+        click.echo(f"  {_cor('não sabe o chat id?', CINZA)} rastreador telegram id")
+        raise SystemExit(1)
+
+    click.echo("enviando mensagem de teste...")
+
+    if notif.enviar_texto(
+        "✅ <b>Rastreador de preços</b>\n\n"
+        "Alerta configurado e funcionando.\n"
+        "Você vai receber uma mensagem aqui quando um preço cruzar o alvo."
+    ):
+        click.echo(f"{_cor('✓', VERDE)} mensagem entregue — confira o Telegram")
+    else:
+        click.echo(f"{_cor('✗', VERMELHO)} falha no envio")
+        click.echo()
+        click.echo("  verifique:")
+        click.echo("    - o token está correto")
+        click.echo("    - o chat id é o seu (não de outro bot)")
+        click.echo("    - você já enviou /start para o bot")
         raise SystemExit(1)
 
 

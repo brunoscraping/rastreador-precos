@@ -126,20 +126,96 @@ O produto sai da lista ativa, mas **o histórico é preservado**.
 
 ---
 
-## Agendando verificações
+## Alerta no Telegram
 
-### Windows (Agendador de Tarefas)
+Quando um preço cruza o alvo, o alerta chega no seu celular.
+
+### 1. Criar o bot
+
+No Telegram, fale com **[@BotFather](https://t.me/BotFather)**:
+
+```
+/newbot
+```
+
+Ele pede um nome e um username (precisa terminar em `bot`) e devolve um token:
+
+```
+7412345678:AAH9xK2mPq3vN8wR5tY7uI1oP4aS6dF9gH0
+```
+
+### 2. Descobrir seu chat ID
+
+**Envie qualquer mensagem para o seu bot primeiro** — o Telegram só revela
+chats que já interagiram com ele.
+
+```bash
+export TELEGRAM_BOT_TOKEN="7412345678:AAH..."
+rastreador telegram id
+```
+
+```
+chats encontrados:
+
+          8348412890   private    Bruno
+```
+
+### 3. Configurar e testar
+
+```bash
+export TELEGRAM_CHAT_ID="8348412890"
+rastreador telegram test
+```
+
+Se chegar a mensagem, está pronto. Permanente no Windows:
 
 ```powershell
-$acao = New-ScheduledTaskAction -Execute "D:\Projetos\rastreador-precos\.venv\Scripts\rastreador.exe" -Argument "check"
-$gatilho = New-ScheduledTaskTrigger -Daily -At 09:00
-Register-ScheduledTask -TaskName "RastreadorPrecos" -Action $acao -Trigger $gatilho
+[Environment]::SetEnvironmentVariable("TELEGRAM_BOT_TOKEN", "741...", "User")
+[Environment]::SetEnvironmentVariable("TELEGRAM_CHAT_ID", "8348412890", "User")
 ```
+
+### Como fica o alerta
+
+```
+🔔 Queda de preço
+
+In Her Wake
+
+💰 Agora: £ 12,84
+📉 Antes: £ 15,20
+⬇️ Variação: -15.53%
+🎯 Alvo: £ 15,00
+
+abrir produto
+```
+
+**Anti-spam:** o alerta não repete enquanto o preço não cair **abaixo** do
+último valor que já disparou. Uma página que oscila entre R$ 199,89 e
+R$ 199,91 não gera enxurrada de mensagens.
+
+---
+
+## Rodando sozinho
+
+### Windows — script pronto
+
+```powershell
+# grava as credenciais e registra a tarefa
+.\agendar.ps1 -Horarios "09:00","21:00"
+
+# testa na hora
+.\agendar.ps1 -RodarAgora
+
+# remove
+.\agendar.ps1 -Remover
+```
+
+O log de cada execução fica em `%USERPROFILE%\.rastreador-precos\execucao.log`.
 
 ### Linux / macOS (cron)
 
 ```cron
-0 9,18 * * * cd /caminho/rastreador-precos && .venv/bin/rastreador check >> ~/precos.log 2>&1
+0 9,21 * * * cd /caminho/rastreador-precos && .venv/bin/rastreador check >> ~/precos.log 2>&1
 ```
 
 ---
@@ -154,10 +230,14 @@ rastreador-precos/
 │   ├── coletor.py        HTTP com retry/backoff + Playwright
 │   ├── banco.py          SQLite, histórico e estatísticas
 │   ├── motor.py          orquestração do ciclo
+│   ├── notificador.py    alerta no Telegram
 │   └── cli.py            interface de linha de comando
 ├── tests/
-│   ├── test_extrator.py  25 casos de normalização e extração
-│   └── test_banco.py     persistência, histórico e alerta
+│   ├── test_extrator.py            25 casos de normalização e extração
+│   ├── test_banco.py               persistência, histórico e ordenação
+│   ├── test_notificador.py         formatação, credenciais, HTML escaping
+│   └── test_integracao_alerta.py   motor <-> notificador, anti-spam
+├── agendar.ps1           registra a tarefa no Windows
 └── pyproject.toml
 ```
 
@@ -170,6 +250,30 @@ pip install -e ".[dev]"
 pytest -v
 pytest --cov=rastreador --cov-report=term-missing
 ```
+
+69 testes cobrindo normalização, extração, persistência, ordenação,
+formatação de alerta e integração motor↔notificador.
+
+### Validado ao vivo
+
+Além da suíte, o fluxo completo foi exercitado contra sites reais:
+
+- Coleta e extração de preço em páginas com `application/ld+json`
+- Alerta entregue de fato no Telegram, com histórico gravado em SQLite
+- Anti-spam confirmado: segundo check no mesmo valor não reenvia
+
+Dois bugs de produção foram encontrados nesse processo e corrigidos:
+
+1. **Ordenação instável.** `ORDER BY lido_em DESC` sem desempate: duas
+   leituras no mesmo segundo empatam e o SQLite devolve ordem
+   indeterminada, quebrando estatística e detecção de menor preço.
+   Corrigido com `id DESC` como critério secundário.
+
+2. **Corpo comprimido.** `Accept-Encoding` anunciava `br` (Brotli) sem a
+   biblioteca instalada. O servidor enviava Brotli e o parser recebia
+   binário, reportando "preço não encontrado" — sintoma que escondia a
+   causa. Corrigido anunciando `br` apenas quando `brotli` está presente,
+   mais uma guarda `parece_html` que nomeia o problema.
 
 ---
 

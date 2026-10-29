@@ -6,6 +6,13 @@ from .banco import Banco, Estatistica, Produto
 from .coletor import ColetaFalhou, ColetorNavegador, ColetorSimples, Resposta
 from .extrator import Preco, extrair_preco, extrair_titulo, normalizar_preco
 from .motor import Motor, Resultado, banco_padrao
+from .notificador import (
+    Alerta,
+    Notificador,
+    NotificadorMultiplo,
+    NotificadorTelegram,
+    notificador_padrao,
+)
 
 __all__ = [
     "Banco",
@@ -22,4 +29,9 @@ __all__ = [
     "Motor",
     "Resultado",
     "banco_padrao",
+    "Alerta",
+    "Notificador",
+    "NotificadorMultiplo",
+    "NotificadorTelegram",
+    "notificador_padrao",
 ]
