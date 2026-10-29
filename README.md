@@ -33,7 +33,7 @@ quando o site muda o layout.
 Requer **Python 3.10+**.
 
 ```bash
-git clone https://github.com/SEU-USUARIO/rastreador-precos.git
+git clone https://github.com/brunoscraping/rastreador-precos.git
 cd rastreador-precos
 
 python -m venv .venv

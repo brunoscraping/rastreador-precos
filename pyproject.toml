@@ -37,8 +37,8 @@ dev = [
 rastreador = "rastreador.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/SEU-USUARIO/rastreador-precos"
-Repository = "https://github.com/SEU-USUARIO/rastreador-precos"
+Homepage = "https://github.com/brunoscraping/rastreador-precos"
+Repository = "https://github.com/brunoscraping/rastreador-precos"
 
 [tool.setuptools.packages.find]
 where = ["src"]
